@@ -110,3 +110,28 @@ describe('channel guard', async () => {
   it('removes leaked public slash echoes of our app', () => expect(shouldRemove(msg({ type: 20, applicationId: 'app', author: { bot: true, id: 'app' } }), ctx)).toBe(true));
   it('ignores other channels', () => expect(shouldRemove(msg({ channelId: 'other' }), ctx)).toBe(false));
 });
+
+describe('Solana lock validation', async () => {
+  const { validateSolanaLock } = await import('../src/domain/settlement');
+  const now = 1_800_000_000;
+  const s = { amount_usdt_units: '5100000', secret_hash: null };
+  const ok = { amount: 5_100_000n, deadline: now + 420, secretHashHex: 'ab'.repeat(32) };
+
+  it('accepts the exact amount inside the deadline window', () => {
+    expect(validateSolanaLock(s, ok, now)).toBeNull();
+  });
+
+  it('rejects an overpayment, because the escrow address would not match the swap amount', () => {
+    expect(validateSolanaLock(s, { ...ok, amount: 5_100_001n }, now)).toMatch(/must equal 5100000/);
+  });
+
+  it('rejects an underpayment', () => {
+    expect(validateSolanaLock(s, { ...ok, amount: 5_099_999n }, now)).toMatch(/must equal/);
+  });
+
+  it('rejects deadlines outside the window and a wrong platform secret', () => {
+    expect(validateSolanaLock(s, { ...ok, deadline: now + 60 }, now)).toMatch(/need at least/);
+    expect(validateSolanaLock(s, { ...ok, deadline: now + 100_000 }, now)).toMatch(/too far/);
+    expect(validateSolanaLock({ ...s, secret_hash: 'cd'.repeat(32) }, ok, now)).toMatch(/platform secret/);
+  });
+});
