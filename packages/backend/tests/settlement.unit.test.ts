@@ -135,3 +135,34 @@ describe('Solana lock validation', async () => {
     expect(validateSolanaLock({ ...s, secret_hash: 'cd'.repeat(32) }, ok, now)).toMatch(/platform secret/);
   });
 });
+
+describe('instructions follow the settlement rail', async () => {
+  const { instructionFor } = await import('../src/domain/instructions');
+  const BUYER_SOL = 'Bm1Z7pKq4yB2hR8vXc3dNfLwTg5sJ6uA9eQ1oVrYiPk';
+  const SELLER_SOL = 'Cx8W2nLp5zD3jS9tYb4eMgKvRh6uF7aQ2wP1oXcZiNd';
+  const text = (i: { headline: string; detail: string; commands: string[] }) => [i.headline, i.detail, ...i.commands].join('\n');
+
+  it('sends a Solana buyer to the desk, not to evm lock', () => {
+    const i = instructionFor(swap({ settlement_rail: 'solana', buyer_sol: BUYER_SOL, seller_sol: SELLER_SOL, seller_eth: SELLER_SOL.toLowerCase() }), 'buyer');
+    expect(i.actionable).toBe(true);
+    expect(text(i)).toContain(BUYER_SOL);
+    expect(text(i)).not.toMatch(/evm lock|partyB/);
+  });
+
+  it('sends a Solana seller to the desk to withdraw', () => {
+    const i = instructionFor(swap({ settlement_rail: 'solana', status: 'awaiting_seller_claim', revealed_preimage: 'ef'.repeat(32), seller_sol: SELLER_SOL }), 'seller');
+    expect(text(i)).toContain(SELLER_SOL);
+    expect(text(i)).not.toMatch(/evm claim/);
+  });
+
+  it('sends a Solana buyer to the desk to refund', () => {
+    const i = instructionFor(swap({ settlement_rail: 'solana', status: 'awaiting_buyer_refund', buyer_sol: BUYER_SOL }), 'buyer');
+    expect(i.commands).toEqual([]);
+    expect(text(i)).not.toMatch(/evm refund/);
+  });
+
+  it('keeps the EVM commands on the EVM rail', () => {
+    expect(instructionFor(swap({ settlement_rail: 'evm' }), 'buyer').commands.join(' ')).toMatch(/evm lock/);
+    expect(instructionFor(swap({ settlement_rail: 'evm', status: 'awaiting_seller_claim', revealed_preimage: 'ef'.repeat(32) }), 'seller').commands.join(' ')).toMatch(/evm claim/);
+  });
+});
