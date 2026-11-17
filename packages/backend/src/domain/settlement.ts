@@ -8,6 +8,7 @@ import {
   newPreimage,
   parseSwapBindingAsset,
   sha256Bytes,
+  UUID_RE,
   type HtlcDescriptor,
 } from '@btq-swap/htlc';
 import { config, sellerTimeBudgetSec } from '../config';
@@ -42,7 +43,7 @@ async function lockSwap(c: Queryable, swapId: string): Promise<SwapRow | null> {
 export async function getSwap(idOrShort: string | number, q: Queryable = db()): Promise<SwapRow | null> {
   const s = String(idOrShort).trim().replace(/^#/, '');
   if (/^\d+$/.test(s)) return one<SwapRow>(q, 'SELECT * FROM swaps WHERE short_id = $1', [s]);
-  if (/^[0-9a-f-]{36}$/i.test(s)) return one<SwapRow>(q, 'SELECT * FROM swaps WHERE id = $1', [s]);
+  if (UUID_RE.test(s)) return one<SwapRow>(q, 'SELECT * FROM swaps WHERE id = $1', [s]);
   return null;
 }
 
